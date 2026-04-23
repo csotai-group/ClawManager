@@ -313,3 +313,12 @@ func normalizePortValue(values ...string) string {
 
 	return ""
 }
+
+// defaultSidecarImage returns the sidecar image to use for openclaw instances.
+// Configurable via SIDECAR_IMAGE environment variable. Empty means disabled.
+func defaultSidecarImage() string {
+	if img := strings.TrimSpace(os.Getenv("SIDECAR_IMAGE")); img != "" {
+		return img
+	}
+	return ""
+}

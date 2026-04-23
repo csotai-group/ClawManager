@@ -49,6 +49,8 @@ type PodConfig struct {
 	ContainerPort      int32
 	ExtraEnv           map[string]string
 	EnvFromSecretNames []string
+	SidecarEnabled   bool
+	SidecarImage     string
 }
 
 // CreatePod creates a new pod for an instance
@@ -189,6 +191,37 @@ func (s *PodService) CreatePod(ctx context.Context, config PodConfig) (*corev1.P
 				LocalObjectReference: corev1.LocalObjectReference{Name: secretName},
 			},
 		})
+	}
+
+	// Add sidecar container for openclaw instances
+	if config.SidecarEnabled && config.SidecarImage != "" {
+		sidecarContainer := corev1.Container{
+			Name:  "sidecar",
+			Image: config.SidecarImage,
+			Ports: []corev1.ContainerPort{
+				{
+					ContainerPort: 5000,
+					Name:          "sidecar",
+				},
+			},
+			VolumeMounts: []corev1.VolumeMount{
+				{
+					Name:      "data",
+					MountPath: "/config",
+				},
+			},
+			Env: []corev1.EnvVar{
+				{
+					Name:  "INSTANCE_ID",
+					Value: fmt.Sprintf("%d", config.InstanceID),
+				},
+				{
+					Name:  "USER_ID",
+					Value: fmt.Sprintf("%d", config.UserID),
+				},
+			},
+		}
+		pod.Spec.Containers = append(pod.Spec.Containers, sidecarContainer)
 	}
 
 	createdPod, err := s.client.Clientset.CoreV1().Pods(namespace).Create(ctx, pod, metav1.CreateOptions{})

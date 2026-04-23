@@ -300,6 +300,10 @@ func (s *instanceService) Create(userID int, req CreateInstanceRequest) (*models
 		}
 	}
 
+	// Prepare sidecar config for openclaw instances
+	sidecarImage := defaultSidecarImage()
+	enableSidecar := strings.EqualFold(instance.Type, "openclaw") && sidecarImage != ""
+
 	// Create Pod
 	podConfig := k8s.PodConfig{
 		InstanceID:         instance.ID,
@@ -315,6 +319,8 @@ func (s *instanceService) Create(userID int, req CreateInstanceRequest) (*models
 		ContainerPort:      runtimeConfig.Port,
 		ExtraEnv:           extraEnv,
 		EnvFromSecretNames: []string{bootstrapSecretName},
+		SidecarEnabled:     enableSidecar,
+		SidecarImage:       sidecarImage,
 	}
 
 	pod, err := s.podService.CreatePod(ctx, podConfig)
@@ -332,12 +338,16 @@ func (s *instanceService) Create(userID int, req CreateInstanceRequest) (*models
 	}
 
 	// Create Service for the instance
+	additionalPorts := additionalServicePorts(runtimeConfig.Port)
+	if enableSidecar {
+		additionalPorts = append(additionalPorts, 5000)
+	}
 	serviceConfig := k8s.ServiceConfig{
 		InstanceID:      instance.ID,
 		InstanceName:    instance.Name,
 		UserID:          userID,
 		ContainerPort:   runtimeConfig.Port,
-		AdditionalPorts: additionalServicePorts(runtimeConfig.Port),
+		AdditionalPorts: additionalPorts,
 	}
 
 	serviceInfo, err := s.serviceService.CreateService(ctx, serviceConfig)
@@ -473,6 +483,10 @@ func (s *instanceService) Start(instanceID int) error {
 		}
 	}
 
+	// Prepare sidecar config for openclaw instances
+	sidecarImage := defaultSidecarImage()
+	enableSidecar := strings.EqualFold(instance.Type, "openclaw") && sidecarImage != ""
+
 	// Create new pod
 	if requiresRestrictedNetwork(instance.Type) {
 		if err := s.networkPolicyService.EnsureDefaultPolicy(ctx, instance.UserID, instance.ID, instance.Name); err != nil {
@@ -494,6 +508,8 @@ func (s *instanceService) Start(instanceID int) error {
 		ContainerPort:      runtimeConfig.Port,
 		ExtraEnv:           extraEnv,
 		EnvFromSecretNames: []string{bootstrapSecretName},
+		SidecarEnabled:     enableSidecar,
+		SidecarImage:       sidecarImage,
 	}
 
 	pod, err := s.podService.CreatePod(ctx, podConfig)
@@ -504,12 +520,16 @@ func (s *instanceService) Start(instanceID int) error {
 	// Ensure Service exists (create if not exists)
 	serviceExists, _ := s.serviceService.ServiceExists(ctx, instance.UserID, instance.ID)
 	if !serviceExists {
+		additionalPorts := additionalServicePorts(runtimeConfig.Port)
+		if enableSidecar {
+			additionalPorts = append(additionalPorts, 5000)
+		}
 		serviceConfig := k8s.ServiceConfig{
 			InstanceID:      instance.ID,
 			InstanceName:    instance.Name,
 			UserID:          instance.UserID,
 			ContainerPort:   runtimeConfig.Port,
-			AdditionalPorts: additionalServicePorts(runtimeConfig.Port),
+			AdditionalPorts: additionalPorts,
 		}
 		_, err = s.serviceService.CreateService(ctx, serviceConfig)
 		if err != nil {
