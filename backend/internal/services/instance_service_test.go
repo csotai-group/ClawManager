@@ -64,8 +64,8 @@ func TestBuildGatewayEnvInjectsGatewayModelCatalog(t *testing.T) {
 	if env["CLAWMANAGER_LLM_BASE_URL"] != "http://gateway.example/api/v1/gateway/llm" {
 		t.Fatalf("expected CLAWMANAGER_LLM_BASE_URL to use gateway base URL, got %q", env["CLAWMANAGER_LLM_BASE_URL"])
 	}
-	if env["CLAWMANAGER_LLM_MODEL"] != `["auto","GPT-4.1","Claude 3.7 Sonnet","deepseek-r1"]` {
-		t.Fatalf("expected CLAWMANAGER_LLM_MODEL to contain injected model catalog JSON, got %q", env["CLAWMANAGER_LLM_MODEL"])
+	if env["CLAWMANAGER_LLM_MODEL"] != "auto" {
+		t.Fatalf("expected CLAWMANAGER_LLM_MODEL to be default model, got %q", env["CLAWMANAGER_LLM_MODEL"])
 	}
 	if env["OPENAI_MODEL"] != "auto" {
 		t.Fatalf("expected OPENAI_MODEL to remain the default gateway alias, got %q", env["OPENAI_MODEL"])

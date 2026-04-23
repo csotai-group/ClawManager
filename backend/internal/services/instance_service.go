@@ -604,7 +604,7 @@ func (s *instanceService) buildGatewayEnv(instance *models.Instance) (map[string
 	return map[string]string{
 		"CLAWMANAGER_LLM_BASE_URL":   baseURL,
 		"CLAWMANAGER_LLM_API_KEY":    token,
-		"CLAWMANAGER_LLM_MODEL":      modelInjection.modelsJSON,
+		"CLAWMANAGER_LLM_MODEL":      modelInjection.defaultModel,
 		"CLAWMANAGER_LLM_PROVIDER":   "openai-compatible",
 		"CLAWMANAGER_INSTANCE_TOKEN": token,
 		"OPENAI_BASE_URL":            baseURL,
