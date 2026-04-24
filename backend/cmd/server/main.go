@@ -115,6 +115,7 @@ func main() {
 	skillHandler := handlers.NewSkillHandler(skillService, instanceService)
 	securityHandler := handlers.NewSecurityHandler(securityScanService)
 	agentHandler := handlers.NewAgentHandler(instanceAgentService, instanceCommandService, instanceRuntimeStatusService, instanceConfigRevisionService, skillService)
+	internalHandler := handlers.NewInternalHandler(instanceService)
 
 	// Initialize WebSocket hub and handler
 	wsHub := services.GetHub()
@@ -349,6 +350,16 @@ func main() {
 			ws.GET("", wsHandler.HandleWebSocket)
 			ws.GET("/stats", wsHandler.GetConnectionCount)
 		}
+	}
+
+	// Internal API routes (for cross-cluster services like Five-Star AI)
+	internal := r.Group("/internal")
+	internal.Use(internalHandler.InternalAuthMiddleware())
+	{
+		internal.POST("/login", internalHandler.InternalLogin)
+		internal.GET("/instances", internalHandler.ListInstances)
+		internal.GET("/instances/:id", internalHandler.GetInstance)
+		internal.POST("/instances/:id/restart", internalHandler.RestartInstance)
 	}
 
 	// Start server

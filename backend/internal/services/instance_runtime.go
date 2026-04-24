@@ -322,3 +322,13 @@ func defaultSidecarImage() string {
 	}
 	return ""
 }
+
+// defaultSidecarGatewayBaseURL returns the base URL of the sidecar gateway for
+// cross-cluster instance access. Configurable via SIDECAR_GATEWAY_BASE_URL.
+// Example: http://10.110.169.51:30759
+func defaultSidecarGatewayBaseURL() (string, bool) {
+	if override := strings.TrimSpace(os.Getenv("SIDECAR_GATEWAY_BASE_URL")); override != "" {
+		return override, true
+	}
+	return "", false
+}
