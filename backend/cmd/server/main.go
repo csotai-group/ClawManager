@@ -353,7 +353,7 @@ func main() {
 	}
 
 	// Internal API routes (for cross-cluster services like Five-Star AI)
-	internal := r.Group("/internal")
+	internal := api.Group("/internal")
 	internal.Use(internalHandler.InternalAuthMiddleware())
 	{
 		internal.POST("/login", internalHandler.InternalLogin)
