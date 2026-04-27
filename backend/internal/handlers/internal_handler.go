@@ -19,13 +19,15 @@ import (
 // (e.g. Five-Star AI island / openclaw-service).
 type InternalHandler struct {
 	instanceService services.InstanceService
+	userService     services.UserService
 	internalToken   string
 }
 
 // NewInternalHandler creates a new internal handler
-func NewInternalHandler(instanceService services.InstanceService) *InternalHandler {
+func NewInternalHandler(instanceService services.InstanceService, userService services.UserService) *InternalHandler {
 	return &InternalHandler{
 		instanceService: instanceService,
+		userService:     userService,
 		internalToken:   strings.TrimSpace(os.Getenv("INTERNAL_API_TOKEN")),
 	}
 }
@@ -187,6 +189,70 @@ func instanceToInternalResponse(inst *models.Instance, gatewayBase string, clien
 // sidecarGatewayBaseURL reads the sidecar gateway base URL from environment.
 func sidecarGatewayBaseURL() string {
 	return strings.TrimSpace(os.Getenv("SIDECAR_GATEWAY_BASE_URL"))
+}
+
+// BootstrapCreateUser creates a new user without token/admin checks.
+func (h *InternalHandler) BootstrapCreateUser(c *gin.Context) {
+	var req CreateUserRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.ValidationError(c, err)
+		return
+	}
+
+	user, err := h.userService.CreateUser(req.Username, req.Email, req.Password, req.Role)
+	if err != nil {
+		utils.HandleError(c, err)
+		return
+	}
+
+	utils.Success(c, http.StatusCreated, "User created successfully", gin.H{
+		"id":       user.ID,
+		"username": user.Username,
+		"email":    user.Email,
+		"role":     user.Role,
+	})
+}
+
+// BootstrapCreateInstance creates an instance for a specific user without token/admin checks.
+func (h *InternalHandler) BootstrapCreateInstance(c *gin.Context) {
+	userIdStr := c.Param("userId")
+	userID, err := strconv.Atoi(userIdStr)
+	if err != nil {
+		utils.Error(c, http.StatusBadRequest, "invalid user id")
+		return
+	}
+
+	var req CreateInstanceRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.ValidationError(c, err)
+		return
+	}
+
+	createReq := services.CreateInstanceRequest{
+		Name:                 req.Name,
+		Description:          req.Description,
+		Type:                 req.Type,
+		CPUCores:             req.CPUCores,
+		MemoryGB:             req.MemoryGB,
+		DiskGB:               req.DiskGB,
+		GPUEnabled:           req.GPUEnabled,
+		GPUCount:             req.GPUCount,
+		OSType:               req.OSType,
+		OSVersion:            req.OSVersion,
+		ImageRegistry:        req.ImageRegistry,
+		ImageTag:             req.ImageTag,
+		EnvironmentOverrides: req.EnvironmentOverrides,
+		StorageClass:         req.StorageClass,
+		OpenClawConfigPlan:   req.OpenClawConfigPlan,
+	}
+
+	instance, err := h.instanceService.Create(userID, createReq)
+	if err != nil {
+		utils.HandleError(c, err)
+		return
+	}
+
+	utils.Success(c, http.StatusCreated, "Instance created successfully", instance)
 }
 
 func generateInternalToken(instanceID int) string {

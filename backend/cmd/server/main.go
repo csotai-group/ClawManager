@@ -115,7 +115,7 @@ func main() {
 	skillHandler := handlers.NewSkillHandler(skillService, instanceService)
 	securityHandler := handlers.NewSecurityHandler(securityScanService)
 	agentHandler := handlers.NewAgentHandler(instanceAgentService, instanceCommandService, instanceRuntimeStatusService, instanceConfigRevisionService, skillService)
-	internalHandler := handlers.NewInternalHandler(instanceService)
+	internalHandler := handlers.NewInternalHandler(instanceService, userService)
 
 	// Initialize WebSocket hub and handler
 	wsHub := services.GetHub()
@@ -350,6 +350,14 @@ func main() {
 			ws.GET("", wsHandler.HandleWebSocket)
 			ws.GET("/stats", wsHandler.GetConnectionCount)
 		}
+	}
+
+	// Internal bootstrap routes (internal token only, no user JWT/admin required)
+	bootstrap := api.Group("/internal/bootstrap")
+	bootstrap.Use(internalHandler.InternalAuthMiddleware())
+	{
+		bootstrap.POST("/users", internalHandler.BootstrapCreateUser)
+		bootstrap.POST("/users/:userId/instances", internalHandler.BootstrapCreateInstance)
 	}
 
 	// Internal API routes (for cross-cluster services like Five-Star AI)

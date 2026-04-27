@@ -36,21 +36,24 @@ func (s *PodService) GetClient() *Client {
 
 // PodConfig holds configuration for creating a pod
 type PodConfig struct {
-	InstanceID         int
-	InstanceName       string
-	UserID             int
-	Type               string
-	CPUCores           float64
-	MemoryGB           int
-	GPUEnabled         bool
-	GPUCount           int
-	Image              string
-	MountPath          string
-	ContainerPort      int32
-	ExtraEnv           map[string]string
-	EnvFromSecretNames []string
-	SidecarEnabled   bool
-	SidecarImage     string
+	InstanceID           int
+	InstanceName         string
+	UserID               int
+	Type                 string
+	CPUCores             float64
+	MemoryGB             int
+	GPUEnabled           bool
+	GPUCount             int
+	Image                string
+	MountPath            string
+	ContainerPort        int32
+	ExtraEnv             map[string]string
+	EnvFromSecretNames   []string
+	SidecarEnabled       bool
+	SidecarImage         string
+	InitContainerEnabled bool
+	InitContainerImage   string
+	InitContainerToken   string
 }
 
 // CreatePod creates a new pod for an instance
@@ -191,6 +194,55 @@ func (s *PodService) CreatePod(ctx context.Context, config PodConfig) (*corev1.P
 				LocalObjectReference: corev1.LocalObjectReference{Name: secretName},
 			},
 		})
+	}
+
+	// Add init container for openclaw instances
+	if config.InitContainerEnabled && config.InitContainerImage != "" {
+		initContainer := corev1.Container{
+			Name:    "bootstrap",
+			Image:   config.InitContainerImage,
+			Command: []string{"/bin/sh", "-c"},
+			Args: []string{`set -eu
+
+SENTINEL="/config/.bootstrap-v1.done"
+
+if [ -f "$SENTINEL" ]; then
+  exit 0
+fi
+
+mkdir -p /config/workspace /config/skills /config/scripts
+
+if [ -d /seed/workspace ]; then
+  cp -R /seed/workspace/. /config/workspace/
+fi
+
+if [ -d /seed/skills ]; then
+  cp -R /seed/skills/. /config/skills/
+fi
+
+if [ -d /seed/scripts ]; then
+  cp -R /seed/scripts/. /config/scripts/
+fi
+
+TOKEN_ESCAPED="$(printf '%s' "$OPENCLAW_BOOTSTRAP_TOKEN" | sed 's/[\\/&]/\\\\&/g')"
+sed "s/__GATEWAY_TOKEN__/${TOKEN_ESCAPED}/g" /seed/openclaw.json.tpl > /config/openclaw.json
+
+chmod 600 /config/openclaw.json || true
+touch "$SENTINEL"`},
+			VolumeMounts: []corev1.VolumeMount{
+				{
+					Name:      "data",
+					MountPath: "/config",
+				},
+			},
+			Env: []corev1.EnvVar{
+				{
+					Name:  "OPENCLAW_BOOTSTRAP_TOKEN",
+					Value: config.InitContainerToken,
+				},
+			},
+		}
+		pod.Spec.InitContainers = []corev1.Container{initContainer}
 	}
 
 	// Add sidecar container for openclaw instances

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -304,23 +305,33 @@ func (s *instanceService) Create(userID int, req CreateInstanceRequest) (*models
 	sidecarImage := defaultSidecarImage()
 	enableSidecar := strings.EqualFold(instance.Type, "openclaw") && sidecarImage != ""
 
+	// Prepare init container config for openclaw instances
+	openClawSeedImage := strings.TrimSpace(os.Getenv("OPENCLAW_SEED_IMAGE"))
+	if openClawSeedImage == "" {
+		openClawSeedImage = "openclaw/openclaw:seed-latest"
+	}
+	enableInitContainer := strings.EqualFold(instance.Type, "openclaw") && openClawSeedImage != ""
+
 	// Create Pod
 	podConfig := k8s.PodConfig{
-		InstanceID:         instance.ID,
-		InstanceName:       instance.Name,
-		UserID:             userID,
-		Type:               instance.Type,
-		CPUCores:           instance.CPUCores,
-		MemoryGB:           instance.MemoryGB,
-		GPUEnabled:         instance.GPUEnabled,
-		GPUCount:           instance.GPUCount,
-		Image:              runtimeConfig.Image,
-		MountPath:          runtimeConfig.MountPath,
-		ContainerPort:      runtimeConfig.Port,
-		ExtraEnv:           extraEnv,
-		EnvFromSecretNames: []string{bootstrapSecretName},
-		SidecarEnabled:     enableSidecar,
-		SidecarImage:       sidecarImage,
+		InstanceID:           instance.ID,
+		InstanceName:         instance.Name,
+		UserID:               userID,
+		Type:                 instance.Type,
+		CPUCores:             instance.CPUCores,
+		MemoryGB:             instance.MemoryGB,
+		GPUEnabled:           instance.GPUEnabled,
+		GPUCount:             instance.GPUCount,
+		Image:                runtimeConfig.Image,
+		MountPath:            runtimeConfig.MountPath,
+		ContainerPort:        runtimeConfig.Port,
+		ExtraEnv:             extraEnv,
+		EnvFromSecretNames:   []string{bootstrapSecretName},
+		SidecarEnabled:       enableSidecar,
+		SidecarImage:         sidecarImage,
+		InitContainerEnabled: enableInitContainer,
+		InitContainerImage:   openClawSeedImage,
+		InitContainerToken:   *instance.AccessToken,
 	}
 
 	pod, err := s.podService.CreatePod(ctx, podConfig)
@@ -487,6 +498,13 @@ func (s *instanceService) Start(instanceID int) error {
 	sidecarImage := defaultSidecarImage()
 	enableSidecar := strings.EqualFold(instance.Type, "openclaw") && sidecarImage != ""
 
+	// Prepare init container config for openclaw instances
+	openClawSeedImage := strings.TrimSpace(os.Getenv("OPENCLAW_SEED_IMAGE"))
+	if openClawSeedImage == "" {
+		openClawSeedImage = "openclaw/openclaw:seed-latest"
+	}
+	enableInitContainer := strings.EqualFold(instance.Type, "openclaw") && openClawSeedImage != ""
+
 	// Create new pod
 	if requiresRestrictedNetwork(instance.Type) {
 		if err := s.networkPolicyService.EnsureDefaultPolicy(ctx, instance.UserID, instance.ID, instance.Name); err != nil {
@@ -495,21 +513,24 @@ func (s *instanceService) Start(instanceID int) error {
 	}
 
 	podConfig := k8s.PodConfig{
-		InstanceID:         instance.ID,
-		InstanceName:       instance.Name,
-		UserID:             instance.UserID,
-		Type:               instance.Type,
-		CPUCores:           instance.CPUCores,
-		MemoryGB:           instance.MemoryGB,
-		GPUEnabled:         instance.GPUEnabled,
-		GPUCount:           instance.GPUCount,
-		Image:              runtimeConfig.Image,
-		MountPath:          instance.MountPath,
-		ContainerPort:      runtimeConfig.Port,
-		ExtraEnv:           extraEnv,
-		EnvFromSecretNames: []string{bootstrapSecretName},
-		SidecarEnabled:     enableSidecar,
-		SidecarImage:       sidecarImage,
+		InstanceID:           instance.ID,
+		InstanceName:         instance.Name,
+		UserID:               instance.UserID,
+		Type:                 instance.Type,
+		CPUCores:             instance.CPUCores,
+		MemoryGB:             instance.MemoryGB,
+		GPUEnabled:           instance.GPUEnabled,
+		GPUCount:             instance.GPUCount,
+		Image:                runtimeConfig.Image,
+		MountPath:            instance.MountPath,
+		ContainerPort:        runtimeConfig.Port,
+		ExtraEnv:             extraEnv,
+		EnvFromSecretNames:   []string{bootstrapSecretName},
+		SidecarEnabled:       enableSidecar,
+		SidecarImage:         sidecarImage,
+		InitContainerEnabled: enableInitContainer,
+		InitContainerImage:   openClawSeedImage,
+		InitContainerToken:   *instance.AccessToken,
 	}
 
 	pod, err := s.podService.CreatePod(ctx, podConfig)

@@ -134,10 +134,10 @@ type ObjectStorageConfig struct {
 }
 
 type SkillScannerConfig struct {
-	BaseURL   string `yaml:"baseUrl"`
-	APIKey    string `yaml:"apiKey"`
-	TimeoutSeconds int `yaml:"timeoutSeconds"`
-	Enabled   bool   `yaml:"enabled"`
+	BaseURL        string `yaml:"baseUrl"`
+	APIKey         string `yaml:"apiKey"`
+	TimeoutSeconds int    `yaml:"timeoutSeconds"`
+	Enabled        bool   `yaml:"enabled"`
 }
 
 // Load loads configuration from file and environment variables
@@ -209,10 +209,10 @@ func Load() (*Config, error) {
 			LocalFallback:  getEnv("OBJECT_STORAGE_LOCAL_FALLBACK", ".data/object-storage"),
 		},
 		SkillScanner: SkillScannerConfig{
-			BaseURL: getEnv("SKILL_SCANNER_BASE_URL", ""),
-			APIKey: getEnv("SKILL_SCANNER_API_KEY", ""),
+			BaseURL:        getEnv("SKILL_SCANNER_BASE_URL", ""),
+			APIKey:         getEnv("SKILL_SCANNER_API_KEY", ""),
 			TimeoutSeconds: 30,
-			Enabled: strings.EqualFold(getEnv("SKILL_SCANNER_ENABLED", "false"), "true"),
+			Enabled:        strings.EqualFold(getEnv("SKILL_SCANNER_ENABLED", "false"), "true"),
 		},
 	}
 

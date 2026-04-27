@@ -51,8 +51,8 @@ type UpdateQuotaRequest struct {
 	MaxInstances int     `json:"max_instances" binding:"min=0"`
 	MaxCPUCores  float64 `json:"max_cpu_cores" binding:"min=0"`
 	MaxMemoryGB  int     `json:"max_memory_gb" binding:"min=0"`
-	MaxStorageGB int `json:"max_storage_gb" binding:"min=0"`
-	MaxGPUCount  int `json:"max_gpu_count" binding:"min=0"`
+	MaxStorageGB int     `json:"max_storage_gb" binding:"min=0"`
+	MaxGPUCount  int     `json:"max_gpu_count" binding:"min=0"`
 }
 
 // CreateUserRequest represents a create user request (admin only)
@@ -70,15 +70,15 @@ type importUserResult struct {
 }
 
 type importedUserCredential struct {
-	Username        string `json:"username"`
-	Email           string `json:"email"`
-	Role            string `json:"role"`
+	Username        string  `json:"username"`
+	Email           string  `json:"email"`
+	Role            string  `json:"role"`
 	MaxInstances    int     `json:"max_instances"`
 	MaxCPUCores     float64 `json:"max_cpu_cores"`
 	MaxMemoryGB     int     `json:"max_memory_gb"`
-	MaxStorageGB    int    `json:"max_storage_gb"`
-	MaxGPUCount     int    `json:"max_gpu_count"`
-	InitialPassword string `json:"initial_password"`
+	MaxStorageGB    int     `json:"max_storage_gb"`
+	MaxGPUCount     int     `json:"max_gpu_count"`
+	InitialPassword string  `json:"initial_password"`
 }
 
 var importUsernamePattern = regexp.MustCompile(`^[a-zA-Z0-9]+$`)
