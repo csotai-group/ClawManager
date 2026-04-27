@@ -267,6 +267,10 @@ func (h *InternalHandler) BootstrapDeleteInstance(c *gin.Context) {
 	}
 
 	if err := h.instanceService.Delete(id); err != nil {
+		if err.Error() == "instance not found" {
+			c.JSON(http.StatusOK, gin.H{"success": false, "message": "instance not found"})
+			return
+		}
 		utils.HandleError(c, err)
 		return
 	}
