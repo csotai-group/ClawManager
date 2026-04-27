@@ -619,7 +619,7 @@ spec:
       containers:
         - name: clawmanager-app
           image: ghcr.io/yuan-lab-llm/clawmanager:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
             - name: http
               containerPort: 8443
@@ -748,7 +748,7 @@ spec:
       containers:
         - name: skill-scanner
           image: ghcr.io/yuan-lab-llm/skill-scanner:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           command:
             - /opt/skill-scanner-venv/bin/skill-scanner-api
             - --host

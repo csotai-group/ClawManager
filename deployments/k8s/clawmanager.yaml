@@ -650,7 +650,7 @@ spec:
       containers:
         - name: minio
           image: minio/minio:RELEASE.2026-01-24T22-31-39Z
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           args:
             - server
             - /data
@@ -738,7 +738,7 @@ spec:
       containers:
         - name: skill-scanner
           image: ghcr.io/yuan-lab-llm/skill-scanner:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           command:
             - /opt/skill-scanner-venv/bin/skill-scanner-api
             - --host
@@ -794,7 +794,7 @@ spec:
       containers:
         - name: clawmanager-app
           image: ghcr.io/yuan-lab-llm/clawmanager:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
             - name: https
               containerPort: 8443
