@@ -266,8 +266,12 @@ func (h *InternalHandler) BootstrapGetUserByUsername(c *gin.Context) {
 	}
 
 	user, err := h.userService.GetUserByUsername(username)
-	if err != nil || user == nil {
-		utils.Error(c, http.StatusNotFound, "user not found")
+	if err != nil {
+		utils.HandleError(c, err)
+		return
+	}
+	if user == nil {
+		utils.Success(c, http.StatusOK, "User not found", nil)
 		return
 	}
 
