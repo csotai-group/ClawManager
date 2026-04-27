@@ -357,6 +357,7 @@ func main() {
 	bootstrap.Use(internalHandler.InternalAuthMiddleware())
 	{
 		bootstrap.POST("/users", internalHandler.BootstrapCreateUser)
+		bootstrap.GET("/users/:username", internalHandler.BootstrapGetUserByUsername)
 		bootstrap.POST("/users/:userId/instances", internalHandler.BootstrapCreateInstance)
 	}
 

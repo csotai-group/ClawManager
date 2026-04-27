@@ -257,6 +257,28 @@ func (h *InternalHandler) BootstrapCreateInstance(c *gin.Context) {
 		instanceToInternalResponse(instance, sidecarGatewayBaseURL(), k8s.GetClient()))
 }
 
+// BootstrapGetUserByUsername gets a user by username for internal services.
+func (h *InternalHandler) BootstrapGetUserByUsername(c *gin.Context) {
+	username := strings.TrimSpace(c.Param("username"))
+	if username == "" {
+		utils.Error(c, http.StatusBadRequest, "username is required")
+		return
+	}
+
+	user, err := h.userService.GetUserByUsername(username)
+	if err != nil || user == nil {
+		utils.Error(c, http.StatusNotFound, "user not found")
+		return
+	}
+
+	utils.Success(c, http.StatusOK, "User retrieved successfully", gin.H{
+		"id":       user.ID,
+		"username": user.Username,
+		"email":    user.Email,
+		"role":     user.Role,
+	})
+}
+
 func generateInternalToken(instanceID int) string {
 	return "internal_" + strconv.Itoa(instanceID) + "_" + strconv.FormatInt(time.Now().Unix(), 10)
 }
