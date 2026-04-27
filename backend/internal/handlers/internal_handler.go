@@ -169,6 +169,7 @@ func instanceToInternalResponse(inst *models.Instance, gatewayBase string, clien
 		"status":              inst.Status,
 		"proxy_target_base":   proxyTargetBase,
 		"sidecar_service_dns": sidecarServiceDNS,
+		"access_token":        inst.AccessToken,
 		"namespace":           namespace,
 		"service_name":        serviceName,
 		"pod_name":            inst.PodName,
