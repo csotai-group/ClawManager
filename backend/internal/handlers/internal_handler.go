@@ -257,6 +257,23 @@ func (h *InternalHandler) BootstrapCreateInstance(c *gin.Context) {
 		instanceToInternalResponse(instance, sidecarGatewayBaseURL(), k8s.GetClient()))
 }
 
+// BootstrapDeleteInstance deletes an instance without token/admin checks.
+func (h *InternalHandler) BootstrapDeleteInstance(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		utils.Error(c, http.StatusBadRequest, "invalid instance id")
+		return
+	}
+
+	if err := h.instanceService.Delete(id); err != nil {
+		utils.HandleError(c, err)
+		return
+	}
+
+	utils.Success(c, http.StatusOK, "Instance deleted successfully", nil)
+}
+
 // BootstrapGetUserByUsername gets a user by username for internal services.
 func (h *InternalHandler) BootstrapGetUserByUsername(c *gin.Context) {
 	username := strings.TrimSpace(c.Param("username"))

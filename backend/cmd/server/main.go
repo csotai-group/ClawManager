@@ -359,6 +359,7 @@ func main() {
 		bootstrap.POST("/users", internalHandler.BootstrapCreateUser)
 		bootstrap.GET("/users/:username", internalHandler.BootstrapGetUserByUsername)
 		bootstrap.POST("/users/:userId/instances", internalHandler.BootstrapCreateInstance)
+		bootstrap.DELETE("/instances/:id", internalHandler.BootstrapDeleteInstance)
 	}
 
 	// Internal API routes (for cross-cluster services like Five-Star AI)
