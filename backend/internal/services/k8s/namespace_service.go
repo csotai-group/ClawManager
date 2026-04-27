@@ -3,6 +3,7 @@ package k8s
 import (
 	"context"
 	"fmt"
+	"os"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -32,7 +33,19 @@ func (s *NamespaceService) EnsureNamespace(ctx context.Context, userID int) (*co
 	// Try to get the namespace
 	ns, err := s.client.Clientset.CoreV1().Namespaces().Get(ctx, namespace, metav1.GetOptions{})
 	if err == nil {
-		// Namespace already exists
+		// Namespace already exists, check and patch Rancher Project label if needed
+		if rancherProjectID := os.Getenv("RANCHER_PROJECT_ID"); rancherProjectID != "" {
+			if ns.Labels == nil {
+				ns.Labels = make(map[string]string)
+			}
+			if ns.Labels["field.cattle.io/projectId"] == "" {
+				ns.Labels["field.cattle.io/projectId"] = rancherProjectID
+				ns, err = s.client.Clientset.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
+				if err != nil {
+					return nil, fmt.Errorf("failed to update namespace %s with rancher project label: %w", namespace, err)
+				}
+			}
+		}
 		return ns, nil
 	}
 
@@ -47,6 +60,11 @@ func (s *NamespaceService) EnsureNamespace(ctx context.Context, userID int) (*co
 					"managed-by": "clawreef",
 				},
 			},
+		}
+
+		// Add Rancher Project label if configured
+		if rancherProjectID := os.Getenv("RANCHER_PROJECT_ID"); rancherProjectID != "" {
+			newNs.Labels["field.cattle.io/projectId"] = rancherProjectID
 		}
 
 		createdNs, err := s.client.Clientset.CoreV1().Namespaces().Create(ctx, newNs, metav1.CreateOptions{})
