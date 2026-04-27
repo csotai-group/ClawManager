@@ -253,7 +253,8 @@ func (h *InternalHandler) BootstrapCreateInstance(c *gin.Context) {
 		return
 	}
 
-	utils.Success(c, http.StatusCreated, "Instance created successfully", instance)
+	utils.Success(c, http.StatusCreated, "Instance created successfully",
+		instanceToInternalResponse(instance, sidecarGatewayBaseURL(), k8s.GetClient()))
 }
 
 func generateInternalToken(instanceID int) string {
