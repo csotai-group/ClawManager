@@ -45,6 +45,10 @@ docker-up:
 docker-down:
 	docker-compose -f deployments/docker/docker-compose.yml down
 
+# Push image to Aliyun (run from project root)
+push-aliyun:
+	@cd .. && ./push-image.sh latest
+
 # Database migration (requires mysql client)
 migrate:
 	for file in internal/db/migrations/*.sql; do mysql -h localhost -u clawreef -pclawreef123 clawreef < $$file; done
