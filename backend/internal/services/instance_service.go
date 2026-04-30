@@ -79,7 +79,6 @@ type instanceService struct {
 	podService            *k8s.PodService
 	pvcService            *k8s.PVCService
 	serviceService        *k8s.ServiceService
-	networkPolicyService  *k8s.NetworkPolicyService
 }
 
 type gatewayModelInjection struct {
@@ -97,7 +96,6 @@ func NewInstanceService(instanceRepo repository.InstanceRepository, quotaRepo re
 		podService:            k8s.NewPodService(),
 		pvcService:            k8s.NewPVCService(),
 		serviceService:        k8s.NewServiceService(),
-		networkPolicyService:  k8s.NewNetworkPolicyService(),
 	}
 }
 
@@ -290,17 +288,6 @@ func (s *instanceService) Create(userID int, req CreateInstanceRequest) (*models
 		return nil, fmt.Errorf("failed to create PVC: %w", err)
 	}
 
-	if requiresRestrictedNetwork(instance.Type) {
-		if err := s.networkPolicyService.EnsureDefaultPolicy(ctx, userID, instance.ID, instance.Name); err != nil {
-			s.pvcService.DeletePVC(ctx, userID, instance.ID)
-			if bootstrapSnapshot != nil {
-				_ = s.openClawConfigService.MarkSnapshotFailed(bootstrapSnapshot, err)
-			}
-			s.instanceRepo.Delete(instance.ID)
-			return nil, fmt.Errorf("failed to create network policy: %w", err)
-		}
-	}
-
 	// Prepare sidecar config for openclaw instances
 	sidecarImage := defaultSidecarImage()
 	enableSidecar := strings.EqualFold(instance.Type, "openclaw") && sidecarImage != ""
@@ -337,9 +324,6 @@ func (s *instanceService) Create(userID int, req CreateInstanceRequest) (*models
 	pod, err := s.podService.CreatePod(ctx, podConfig)
 	if err != nil {
 		// Rollback: delete PVC and instance record
-		if requiresRestrictedNetwork(instance.Type) {
-			s.networkPolicyService.DeletePolicy(ctx, userID, instance.ID, instance.Name)
-		}
 		s.pvcService.DeletePVC(ctx, userID, instance.ID)
 		if bootstrapSnapshot != nil {
 			_ = s.openClawConfigService.MarkSnapshotFailed(bootstrapSnapshot, err)
@@ -365,9 +349,6 @@ func (s *instanceService) Create(userID int, req CreateInstanceRequest) (*models
 	if err != nil {
 		// Rollback: delete pod, PVC and instance record
 		s.podService.DeletePod(ctx, userID, instance.ID)
-		if requiresRestrictedNetwork(instance.Type) {
-			s.networkPolicyService.DeletePolicy(ctx, userID, instance.ID, instance.Name)
-		}
 		s.pvcService.DeletePVC(ctx, userID, instance.ID)
 		if bootstrapSnapshot != nil {
 			_ = s.openClawConfigService.MarkSnapshotFailed(bootstrapSnapshot, err)
@@ -506,12 +487,6 @@ func (s *instanceService) Start(instanceID int) error {
 	enableInitContainer := strings.EqualFold(instance.Type, "openclaw") && openClawSeedImage != ""
 
 	// Create new pod
-	if requiresRestrictedNetwork(instance.Type) {
-		if err := s.networkPolicyService.EnsureDefaultPolicy(ctx, instance.UserID, instance.ID, instance.Name); err != nil {
-			return fmt.Errorf("failed to create network policy: %w", err)
-		}
-	}
-
 	podConfig := k8s.PodConfig{
 		InstanceID:           instance.ID,
 		InstanceName:         instance.Name,
@@ -577,10 +552,6 @@ func (s *instanceService) Start(instanceID int) error {
 	GetHub().BroadcastInstanceStatus(instance.UserID, instance)
 
 	return nil
-}
-
-func requiresRestrictedNetwork(instanceType string) bool {
-	return strings.TrimSpace(instanceType) != ""
 }
 
 func (s *instanceService) ensureGatewayToken(instance *models.Instance) (string, error) {
