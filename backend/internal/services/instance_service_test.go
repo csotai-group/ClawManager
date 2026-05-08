@@ -85,3 +85,17 @@ func TestResolveGatewayModelInjectionRequiresActiveModels(t *testing.T) {
 		t.Fatalf("expected resolveGatewayModelInjection to fail when no active models exist, got %#v", injection)
 	}
 }
+
+func TestOpenClawAdditionalServicePorts(t *testing.T) {
+	got := openClawAdditionalServicePorts()
+	want := []int32{5001, 18789}
+
+	if len(got) != len(want) {
+		t.Fatalf("expected %d additional OpenClaw service ports, got %d: %#v", len(want), len(got), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("expected additional OpenClaw service ports %#v, got %#v", want, got)
+		}
+	}
+}

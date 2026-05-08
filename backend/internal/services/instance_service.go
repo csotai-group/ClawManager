@@ -334,6 +334,9 @@ func (s *instanceService) Create(userID int, req CreateInstanceRequest) (*models
 
 	// Create Service for the instance
 	additionalPorts := additionalServicePorts(runtimeConfig.Port)
+	if strings.EqualFold(instance.Type, "openclaw") {
+		additionalPorts = append(additionalPorts, openClawAdditionalServicePorts()...)
+	}
 	if enableSidecar {
 		additionalPorts = append(additionalPorts, 5000)
 	}
@@ -517,6 +520,9 @@ func (s *instanceService) Start(instanceID int) error {
 	serviceExists, _ := s.serviceService.ServiceExists(ctx, instance.UserID, instance.ID)
 	if !serviceExists {
 		additionalPorts := additionalServicePorts(runtimeConfig.Port)
+		if strings.EqualFold(instance.Type, "openclaw") {
+			additionalPorts = append(additionalPorts, openClawAdditionalServicePorts()...)
+		}
 		if enableSidecar {
 			additionalPorts = append(additionalPorts, 5000)
 		}
@@ -1124,4 +1130,8 @@ func additionalServicePorts(primaryPort int32) []int32 {
 	}
 
 	return nil
+}
+
+func openClawAdditionalServicePorts() []int32 {
+	return []int32{5001, 18789}
 }
