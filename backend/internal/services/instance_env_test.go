@@ -100,4 +100,11 @@ func TestBuildInstancePodEnvPinsOpenClawGatewayTokenToAccessToken(t *testing.T) 
 	if env["OPENCLAW_CONFIG_PATH"] != "/config/.openclaw/openclaw.json" {
 		t.Fatalf("expected OPENCLAW_CONFIG_PATH to point at managed config, got %q", env["OPENCLAW_CONFIG_PATH"])
 	}
+	wantCommand := "openclaw gateway run --auth token --token " + accessToken
+	if env["OPENCLAW_AGENT_OPENCLAW_COMMAND"] != wantCommand {
+		t.Fatalf("expected OPENCLAW_AGENT_OPENCLAW_COMMAND to force gateway token, got %q", env["OPENCLAW_AGENT_OPENCLAW_COMMAND"])
+	}
+	if env["OPENCLAW_AGENT_OPENCLAW_CONFIG_PATH"] != "/config/.openclaw/openclaw.json" {
+		t.Fatalf("expected OPENCLAW_AGENT_OPENCLAW_CONFIG_PATH to point at managed config, got %q", env["OPENCLAW_AGENT_OPENCLAW_CONFIG_PATH"])
+	}
 }

@@ -93,8 +93,10 @@ func withOpenClawGatewayTokenEnv(instance *models.Instance, env map[string]strin
 	}
 
 	merged := mergeEnvMaps(env, map[string]string{
-		"OPENCLAW_GATEWAY_TOKEN": strings.TrimSpace(*instance.AccessToken),
-		"OPENCLAW_CONFIG_PATH":   "/config/.openclaw/openclaw.json",
+		"OPENCLAW_GATEWAY_TOKEN":              strings.TrimSpace(*instance.AccessToken),
+		"OPENCLAW_CONFIG_PATH":                "/config/.openclaw/openclaw.json",
+		"OPENCLAW_AGENT_OPENCLAW_COMMAND":     "openclaw gateway run --auth token --token " + strings.TrimSpace(*instance.AccessToken),
+		"OPENCLAW_AGENT_OPENCLAW_CONFIG_PATH": "/config/.openclaw/openclaw.json",
 	})
 	return merged
 }
