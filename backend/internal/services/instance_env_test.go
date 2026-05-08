@@ -68,3 +68,36 @@ func TestBuildInstancePodEnvAppliesOverridesAfterDefaults(t *testing.T) {
 		t.Fatalf("expected default environment variable to remain available")
 	}
 }
+
+func TestBuildInstancePodEnvPinsOpenClawGatewayTokenToAccessToken(t *testing.T) {
+	t.Setenv("CLAWMANAGER_EGRESS_PROXY_URL", "")
+	t.Setenv("CLAWMANAGER_SYSTEM_NAMESPACE", "")
+	t.Setenv("K8S_NAMESPACE", "")
+
+	raw, err := marshalEnvironmentOverrides(map[string]string{
+		"OPENCLAW_GATEWAY_TOKEN": "user-supplied-token",
+	})
+	if err != nil {
+		t.Fatalf("marshalEnvironmentOverrides returned error: %v", err)
+	}
+
+	accessToken := "igt_database_token"
+	instance := &models.Instance{
+		ID:                       77,
+		Type:                     "openclaw",
+		AccessToken:              &accessToken,
+		EnvironmentOverridesJSON: raw,
+	}
+
+	env, err := buildInstancePodEnv(instance, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("buildInstancePodEnv returned error: %v", err)
+	}
+
+	if env["OPENCLAW_GATEWAY_TOKEN"] != accessToken {
+		t.Fatalf("expected OPENCLAW_GATEWAY_TOKEN to use database access token, got %q", env["OPENCLAW_GATEWAY_TOKEN"])
+	}
+	if env["OPENCLAW_CONFIG_PATH"] != "/config/.openclaw/openclaw.json" {
+		t.Fatalf("expected OPENCLAW_CONFIG_PATH to point at managed config, got %q", env["OPENCLAW_CONFIG_PATH"])
+	}
+}

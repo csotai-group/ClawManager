@@ -79,6 +79,22 @@ func buildInstancePodEnv(instance *models.Instance, runtimeEnv, gatewayEnv, agen
 	resolved := mergeEnvMaps(runtimeEnv, mergeEnvMaps(gatewayEnv, agentEnv))
 	resolved = withInstanceProxyEnv(instance.Type, instance.ID, resolved)
 	resolved = mergeEnvMaps(resolved, overrides)
+	resolved = withOpenClawGatewayTokenEnv(instance, resolved)
 
 	return resolved, nil
+}
+
+func withOpenClawGatewayTokenEnv(instance *models.Instance, env map[string]string) map[string]string {
+	if instance == nil || !strings.EqualFold(strings.TrimSpace(instance.Type), "openclaw") {
+		return env
+	}
+	if instance.AccessToken == nil || strings.TrimSpace(*instance.AccessToken) == "" {
+		return env
+	}
+
+	merged := mergeEnvMaps(env, map[string]string{
+		"OPENCLAW_GATEWAY_TOKEN": strings.TrimSpace(*instance.AccessToken),
+		"OPENCLAW_CONFIG_PATH":   "/config/.openclaw/openclaw.json",
+	})
+	return merged
 }

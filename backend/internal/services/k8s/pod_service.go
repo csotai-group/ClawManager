@@ -204,30 +204,54 @@ func (s *PodService) CreatePod(ctx context.Context, config PodConfig) (*corev1.P
 			Command: []string{"/bin/sh", "-c"},
 			Args: []string{`set -eu
 
+OPENCLAW_DIR="/config/.openclaw"
+OPENCLAW_CONFIG="${OPENCLAW_DIR}/openclaw.json"
 SENTINEL="/config/.bootstrap-v1.done"
 
-if [ -f "$SENTINEL" ]; then
-  exit 0
+mkdir -p "$OPENCLAW_DIR" /config/workspace /config/skills /config/scripts
+
+if [ ! -f "$SENTINEL" ]; then
+  if [ -d /seed/workspace ]; then
+    cp -R /seed/workspace/. /config/workspace/
+  fi
+
+  if [ -d /seed/skills ]; then
+    cp -R /seed/skills/. /config/skills/
+  fi
+
+  if [ -d /seed/scripts ]; then
+    cp -R /seed/scripts/. /config/scripts/
+  fi
 fi
 
-mkdir -p /config/workspace /config/skills /config/scripts
-
-if [ -d /seed/workspace ]; then
-  cp -R /seed/workspace/. /config/workspace/
+if [ ! -f "$OPENCLAW_CONFIG" ]; then
+  TOKEN_ESCAPED="$(printf '%s' "$OPENCLAW_BOOTSTRAP_TOKEN" | sed 's/[\\/&]/\\\\&/g')"
+  sed "s/__GATEWAY_TOKEN__/${TOKEN_ESCAPED}/g" /seed/openclaw.json.tpl > "$OPENCLAW_CONFIG"
 fi
 
-if [ -d /seed/skills ]; then
-  cp -R /seed/skills/. /config/skills/
+if command -v node >/dev/null 2>&1; then
+  OPENCLAW_CONFIG_TOKEN="$OPENCLAW_BOOTSTRAP_TOKEN" OPENCLAW_CONFIG_PATH="$OPENCLAW_CONFIG" node <<'NODE'
+const fs = require('fs');
+
+const configPath = process.env.OPENCLAW_CONFIG_PATH;
+const raw = fs.readFileSync(configPath, 'utf8').trim();
+const config = raw ? JSON.parse(raw) : {};
+if (!config.gateway || typeof config.gateway !== 'object' || Array.isArray(config.gateway)) {
+  config.gateway = {};
+}
+if (!config.gateway.auth || typeof config.gateway.auth !== 'object' || Array.isArray(config.gateway.auth)) {
+  config.gateway.auth = {};
+}
+config.gateway.auth.mode = 'token';
+config.gateway.auth.token = process.env.OPENCLAW_CONFIG_TOKEN;
+fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n');
+NODE
+else
+  echo "node is required to configure gateway.auth.token" >&2
+  exit 1
 fi
 
-if [ -d /seed/scripts ]; then
-  cp -R /seed/scripts/. /config/scripts/
-fi
-
-TOKEN_ESCAPED="$(printf '%s' "$OPENCLAW_BOOTSTRAP_TOKEN" | sed 's/[\\/&]/\\\\&/g')"
-sed "s/__GATEWAY_TOKEN__/${TOKEN_ESCAPED}/g" /seed/openclaw.json.tpl > /config/openclaw.json
-
-chmod 600 /config/openclaw.json || true
+chmod 600 "$OPENCLAW_CONFIG" || true
 touch "$SENTINEL"`},
 			VolumeMounts: []corev1.VolumeMount{
 				{
