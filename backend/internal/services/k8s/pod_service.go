@@ -113,6 +113,10 @@ func (s *PodService) CreatePod(ctx context.Context, config PodConfig) (*corev1.P
 							ContainerPort: config.ContainerPort,
 							Name:          "http",
 						},
+						{
+							ContainerPort: 18789,
+							Name:          "gateway",
+						},
 					},
 					StartupProbe: &corev1.Probe{
 						ProbeHandler: corev1.ProbeHandler{
@@ -278,6 +282,10 @@ touch "$SENTINEL"`},
 				{
 					ContainerPort: 5000,
 					Name:          "sidecar",
+				},
+				{
+					ContainerPort: 5001,
+					Name:          "sidecar-ext",
 				},
 			},
 			VolumeMounts: []corev1.VolumeMount{

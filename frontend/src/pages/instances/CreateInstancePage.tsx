@@ -311,7 +311,7 @@ const CreateInstancePage: React.FC = () => {
   const [customEnvRows, setCustomEnvRows] = useState<CustomEnvRow[]>([]);
   const [resourcePresetMode, setResourcePresetMode] = useState<
     keyof typeof PRESET_CONFIGS | typeof CUSTOM_RESOURCE_PRESET
-  >("medium");
+  >("small");
 
   const [formData, setFormData] = useState<CreateInstanceRequest>({
     name: "",
@@ -494,9 +494,9 @@ const CreateInstancePage: React.FC = () => {
       setResourcePresetMode(CUSTOM_RESOURCE_PRESET);
       setFormData((current) => ({
         ...current,
-        cpu_cores: PRESET_CONFIGS.medium.cpu_cores,
-        memory_gb: PRESET_CONFIGS.medium.memory_gb,
-        disk_gb: PRESET_CONFIGS.medium.disk_gb,
+        cpu_cores: PRESET_CONFIGS.small.cpu_cores,
+        memory_gb: PRESET_CONFIGS.small.memory_gb,
+        disk_gb: PRESET_CONFIGS.small.disk_gb,
       }));
       return;
     }
@@ -1301,9 +1301,9 @@ const CreateInstancePage: React.FC = () => {
                       ) : (
                         <div className="mt-3 text-sm text-gray-600">
                           {t("instances.mediumDefaultPreset", {
-                            cpu: PRESET_CONFIGS.medium.cpu_cores,
-                            memory: PRESET_CONFIGS.medium.memory_gb,
-                            disk: PRESET_CONFIGS.medium.disk_gb,
+                            cpu: PRESET_CONFIGS.small.cpu_cores,
+                            memory: PRESET_CONFIGS.small.memory_gb,
+                            disk: PRESET_CONFIGS.small.disk_gb,
                           })}
                         </div>
                       )}

@@ -338,7 +338,7 @@ func (s *instanceService) Create(userID int, req CreateInstanceRequest) (*models
 		additionalPorts = append(additionalPorts, openClawAdditionalServicePorts()...)
 	}
 	if enableSidecar {
-		additionalPorts = append(additionalPorts, 5000)
+		additionalPorts = append(additionalPorts, 5000, 5001)
 	}
 	serviceConfig := k8s.ServiceConfig{
 		InstanceID:      instance.ID,
@@ -524,7 +524,7 @@ func (s *instanceService) Start(instanceID int) error {
 			additionalPorts = append(additionalPorts, openClawAdditionalServicePorts()...)
 		}
 		if enableSidecar {
-			additionalPorts = append(additionalPorts, 5000)
+			additionalPorts = append(additionalPorts, 5000, 5001)
 		}
 		serviceConfig := k8s.ServiceConfig{
 			InstanceID:      instance.ID,
@@ -1127,6 +1127,9 @@ func (s *instanceService) ForceSyncInstance(instanceID int) error {
 func additionalServicePorts(primaryPort int32) []int32 {
 	if primaryPort == 3000 || primaryPort == 8082 {
 		return []int32{3000, 8082}
+	}
+	if primaryPort == 3001 {
+		return []int32{18789}
 	}
 
 	return nil
