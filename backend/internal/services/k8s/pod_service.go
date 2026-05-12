@@ -106,8 +106,9 @@ func (s *PodService) CreatePod(ctx context.Context, config PodConfig) (*corev1.P
 			RestartPolicy: corev1.RestartPolicyNever,
 			Containers: []corev1.Container{
 				{
-					Name:  "desktop",
-					Image: config.Image,
+					Name:            "desktop",
+					Image:           config.Image,
+					ImagePullPolicy: corev1.PullAlways,
 					Ports: []corev1.ContainerPort{
 						{
 							ContainerPort: config.ContainerPort,
@@ -203,9 +204,10 @@ func (s *PodService) CreatePod(ctx context.Context, config PodConfig) (*corev1.P
 	// Add init container for openclaw instances
 	if config.InitContainerEnabled && config.InitContainerImage != "" {
 		initContainer := corev1.Container{
-			Name:    "bootstrap",
-			Image:   config.InitContainerImage,
-			Command: []string{"/bin/sh", "-c"},
+			Name:            "bootstrap",
+			Image:           config.InitContainerImage,
+			ImagePullPolicy: corev1.PullAlways,
+			Command:         []string{"/bin/sh", "-c"},
 			Args: []string{`set -eu
 
 OPENCLAW_DIR="/config/.openclaw"
@@ -276,8 +278,9 @@ touch "$SENTINEL"`},
 	// Add sidecar container for openclaw instances
 	if config.SidecarEnabled && config.SidecarImage != "" {
 		sidecarContainer := corev1.Container{
-			Name:  "sidecar",
-			Image: config.SidecarImage,
+			Name:            "sidecar",
+			Image:           config.SidecarImage,
+			ImagePullPolicy: corev1.PullAlways,
 			Ports: []corev1.ContainerPort{
 				{
 					ContainerPort: 5000,
