@@ -108,3 +108,39 @@ func TestBuildInstancePodEnvPinsOpenClawGatewayTokenToAccessToken(t *testing.T) 
 		t.Fatalf("expected OPENCLAW_AGENT_OPENCLAW_CONFIG_PATH to point at managed config, got %q", env["OPENCLAW_AGENT_OPENCLAW_CONFIG_PATH"])
 	}
 }
+
+func TestPopSHMSizeGB(t *testing.T) {
+	tests := []struct {
+		name     string
+		value    string
+		hasValue bool
+		want     int
+	}{
+		{name: "default", want: defaultInstanceSHMSizeGB},
+		{name: "disable", value: "0", hasValue: true, want: 0},
+		{name: "custom", value: "4", hasValue: true, want: 4},
+		{name: "clamp", value: "128", hasValue: true, want: maxInstanceSHMSizeGB},
+		{name: "invalid", value: "nope", hasValue: true, want: defaultInstanceSHMSizeGB},
+		{name: "negative", value: "-1", hasValue: true, want: defaultInstanceSHMSizeGB},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			extraEnv := map[string]string{"KEEP": "value"}
+			if tt.hasValue {
+				extraEnv["SHM_SIZE_GB"] = tt.value
+			}
+
+			got := popSHMSizeGB(extraEnv)
+			if got != tt.want {
+				t.Fatalf("expected shm size %d, got %d", tt.want, got)
+			}
+			if _, ok := extraEnv["SHM_SIZE_GB"]; ok {
+				t.Fatalf("expected SHM_SIZE_GB to be removed from extra env")
+			}
+			if extraEnv["KEEP"] != "value" {
+				t.Fatalf("expected unrelated env to be preserved")
+			}
+		})
+	}
+}

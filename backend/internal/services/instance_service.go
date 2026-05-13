@@ -15,6 +15,7 @@ import (
 	"clawreef/internal/repository"
 	"clawreef/internal/services/k8s"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -23,7 +24,7 @@ type InstanceService interface {
 	Create(userID int, req CreateInstanceRequest) (*models.Instance, error)
 	GetByID(id int) (*models.Instance, error)
 	GetByUserID(userID int, offset, limit int) ([]models.Instance, int, error)
-	GetVisibleInstances(userID int, userRole string, offset, limit int) ([]models.Instance, int, error)
+	GetAllInstances(offset, limit int) ([]models.Instance, int, error)
 	Start(instanceID int) error
 	Stop(instanceID int) error
 	Restart(instanceID int) error
@@ -37,7 +38,7 @@ type InstanceService interface {
 type CreateInstanceRequest struct {
 	Name                 string              `json:"name" validate:"required,min=3,max=50"`
 	Description          *string             `json:"description,omitempty"`
-	Type                 string              `json:"type" validate:"required,oneof=openclaw ubuntu debian centos custom webtop"`
+	Type                 string              `json:"type" validate:"required,oneof=openclaw ubuntu debian centos custom webtop hermes"`
 	CPUCores             float64             `json:"cpu_cores" validate:"required,min=0.1,max=32"`
 	MemoryGB             int                 `json:"memory_gb" validate:"required,min=1,max=128"`
 	DiskGB               int                 `json:"disk_gb" validate:"required,min=10,max=1000"`
@@ -76,9 +77,11 @@ type instanceService struct {
 	quotaRepo             repository.QuotaRepository
 	llmModelRepo          repository.LLMModelRepository
 	openClawConfigService OpenClawConfigService
+	allowPrivilegedPods   bool
 	podService            *k8s.PodService
 	pvcService            *k8s.PVCService
 	serviceService        *k8s.ServiceService
+	networkPolicyService  *k8s.NetworkPolicyService
 }
 
 type gatewayModelInjection struct {
@@ -86,9 +89,17 @@ type gatewayModelInjection struct {
 	modelsJSON   string
 }
 
+type InstanceServiceOption func(*instanceService)
+
+func WithPrivilegedInstancePods(allowed bool) InstanceServiceOption {
+	return func(s *instanceService) {
+		s.allowPrivilegedPods = allowed
+	}
+}
+
 // NewInstanceService creates a new instance service
-func NewInstanceService(instanceRepo repository.InstanceRepository, quotaRepo repository.QuotaRepository, llmModelRepo repository.LLMModelRepository, openClawConfigService OpenClawConfigService) InstanceService {
-	return &instanceService{
+func NewInstanceService(instanceRepo repository.InstanceRepository, quotaRepo repository.QuotaRepository, llmModelRepo repository.LLMModelRepository, openClawConfigService OpenClawConfigService, options ...InstanceServiceOption) InstanceService {
+	service := &instanceService{
 		instanceRepo:          instanceRepo,
 		quotaRepo:             quotaRepo,
 		llmModelRepo:          llmModelRepo,
@@ -96,7 +107,14 @@ func NewInstanceService(instanceRepo repository.InstanceRepository, quotaRepo re
 		podService:            k8s.NewPodService(),
 		pvcService:            k8s.NewPVCService(),
 		serviceService:        k8s.NewServiceService(),
+		networkPolicyService:  k8s.NewNetworkPolicyService(),
 	}
+	for _, option := range options {
+		if option != nil {
+			option(service)
+		}
+	}
+	return service
 }
 
 // Create creates a new instance
@@ -250,25 +268,25 @@ func (s *instanceService) Create(userID int, req CreateInstanceRequest) (*models
 
 	var bootstrapSnapshot *models.OpenClawInjectionSnapshot
 	var bootstrapSecretName string
-	if strings.EqualFold(instance.Type, "openclaw") && s.openClawConfigService != nil && req.OpenClawConfigPlan != nil && hasOpenClawConfigSelections(*req.OpenClawConfigPlan) {
+	if supportsRuntimeConfigInjection(instance.Type) && s.openClawConfigService != nil && req.OpenClawConfigPlan != nil && hasOpenClawConfigSelections(*req.OpenClawConfigPlan) {
 		bootstrapSnapshot, err = s.openClawConfigService.CreateSnapshotForInstance(userID, instance, req.OpenClawConfigPlan)
 		if err != nil {
 			s.instanceRepo.Delete(instance.ID)
-			return nil, fmt.Errorf("failed to compile openclaw bootstrap config: %w", err)
+			return nil, fmt.Errorf("failed to compile runtime bootstrap config: %w", err)
 		}
 		if bootstrapSnapshot != nil {
 			instance.OpenClawConfigSnapshotID = &bootstrapSnapshot.ID
 			instance.UpdatedAt = time.Now()
 			if err := s.instanceRepo.Update(instance); err != nil {
 				s.instanceRepo.Delete(instance.ID)
-				return nil, fmt.Errorf("failed to persist openclaw snapshot reference: %w", err)
+				return nil, fmt.Errorf("failed to persist runtime snapshot reference: %w", err)
 			}
 
 			bootstrapSecretName, err = s.openClawConfigService.EnsureSnapshotSecret(ctx, userID, instance, bootstrapSnapshot.ID)
 			if err != nil {
 				_ = s.openClawConfigService.MarkSnapshotFailed(bootstrapSnapshot, err)
 				s.instanceRepo.Delete(instance.ID)
-				return nil, fmt.Errorf("failed to provision openclaw bootstrap secret: %w", err)
+				return nil, fmt.Errorf("failed to provision runtime bootstrap secret: %w", err)
 			}
 		}
 	}
@@ -288,6 +306,17 @@ func (s *instanceService) Create(userID int, req CreateInstanceRequest) (*models
 		return nil, fmt.Errorf("failed to create PVC: %w", err)
 	}
 
+	// Ensure any legacy per-instance network policy is removed before creating pod.
+	// This keeps new pods unrestricted even if older versions created netpols.
+	if err := s.networkPolicyService.DeletePolicy(ctx, userID, instance.ID, instance.Name); err != nil {
+		s.pvcService.DeletePVC(ctx, userID, instance.ID)
+		if bootstrapSnapshot != nil {
+			_ = s.openClawConfigService.MarkSnapshotFailed(bootstrapSnapshot, err)
+		}
+		s.instanceRepo.Delete(instance.ID)
+		return nil, fmt.Errorf("failed to delete network policy: %w", err)
+	}
+
 	// Prepare sidecar config for openclaw instances
 	sidecarImage := defaultSidecarImage()
 	enableSidecar := strings.EqualFold(instance.Type, "openclaw") && sidecarImage != ""
@@ -300,6 +329,7 @@ func (s *instanceService) Create(userID int, req CreateInstanceRequest) (*models
 	enableInitContainer := strings.EqualFold(instance.Type, "openclaw") && openClawSeedImage != ""
 
 	// Create Pod
+	shmSizeGB := popSHMSizeGB(extraEnv)
 	podConfig := k8s.PodConfig{
 		InstanceID:           instance.ID,
 		InstanceName:         instance.Name,
@@ -312,8 +342,11 @@ func (s *instanceService) Create(userID int, req CreateInstanceRequest) (*models
 		Image:                runtimeConfig.Image,
 		MountPath:            runtimeConfig.MountPath,
 		ContainerPort:        runtimeConfig.Port,
+		ImagePullPolicy:      corev1.PullPolicy(defaultImagePullPolicy()),
 		ExtraEnv:             extraEnv,
 		EnvFromSecretNames:   []string{bootstrapSecretName},
+		SHMSizeGB:            shmSizeGB,
+		SecurityMode:         s.securityModeForInstance(instance.Type),
 		SidecarEnabled:       enableSidecar,
 		SidecarImage:         sidecarImage,
 		InitContainerEnabled: enableInitContainer,
@@ -382,7 +415,7 @@ func (s *instanceService) Create(userID int, req CreateInstanceRequest) (*models
 
 	if bootstrapSnapshot != nil {
 		if err := s.openClawConfigService.MarkSnapshotActive(bootstrapSnapshot); err != nil {
-			return nil, fmt.Errorf("failed to activate openclaw bootstrap snapshot: %w", err)
+			return nil, fmt.Errorf("failed to activate runtime bootstrap snapshot: %w", err)
 		}
 	}
 
@@ -414,22 +447,18 @@ func (s *instanceService) GetByUserID(userID int, offset, limit int) ([]models.I
 	return instances, total, nil
 }
 
-func (s *instanceService) GetVisibleInstances(userID int, userRole string, offset, limit int) ([]models.Instance, int, error) {
-	if strings.EqualFold(strings.TrimSpace(userRole), "admin") {
-		instances, err := s.instanceRepo.GetAll(offset, limit)
-		if err != nil {
-			return nil, 0, err
-		}
-
-		total, err := s.instanceRepo.CountAll()
-		if err != nil {
-			return nil, 0, err
-		}
-
-		return instances, total, nil
+func (s *instanceService) GetAllInstances(offset, limit int) ([]models.Instance, int, error) {
+	instances, err := s.instanceRepo.GetAll(offset, limit)
+	if err != nil {
+		return nil, 0, err
 	}
 
-	return s.GetByUserID(userID, offset, limit)
+	total, err := s.instanceRepo.CountAll()
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return instances, total, nil
 }
 
 // Start starts an instance
@@ -471,11 +500,16 @@ func (s *instanceService) Start(instanceID int) error {
 	}
 
 	bootstrapSecretName := ""
-	if strings.EqualFold(instance.Type, "openclaw") && s.openClawConfigService != nil && instance.OpenClawConfigSnapshotID != nil && *instance.OpenClawConfigSnapshotID > 0 {
+	if supportsRuntimeConfigInjection(instance.Type) && s.openClawConfigService != nil && instance.OpenClawConfigSnapshotID != nil && *instance.OpenClawConfigSnapshotID > 0 {
 		bootstrapSecretName, err = s.openClawConfigService.EnsureSnapshotSecret(ctx, instance.UserID, instance, *instance.OpenClawConfigSnapshotID)
 		if err != nil {
-			return fmt.Errorf("failed to restore openclaw bootstrap secret: %w", err)
+			return fmt.Errorf("failed to restore runtime bootstrap secret: %w", err)
 		}
+	}
+
+	// Remove legacy per-instance network policy before starting pod.
+	if err := s.networkPolicyService.DeletePolicy(ctx, instance.UserID, instance.ID, instance.Name); err != nil {
+		return fmt.Errorf("failed to delete network policy: %w", err)
 	}
 
 	// Prepare sidecar config for openclaw instances
@@ -490,6 +524,7 @@ func (s *instanceService) Start(instanceID int) error {
 	enableInitContainer := strings.EqualFold(instance.Type, "openclaw") && openClawSeedImage != ""
 
 	// Create new pod
+	shmSizeGB := popSHMSizeGB(extraEnv)
 	podConfig := k8s.PodConfig{
 		InstanceID:           instance.ID,
 		InstanceName:         instance.Name,
@@ -502,8 +537,11 @@ func (s *instanceService) Start(instanceID int) error {
 		Image:                runtimeConfig.Image,
 		MountPath:            instance.MountPath,
 		ContainerPort:        runtimeConfig.Port,
+		ImagePullPolicy:      corev1.PullPolicy(defaultImagePullPolicy()),
 		ExtraEnv:             extraEnv,
 		EnvFromSecretNames:   []string{bootstrapSecretName},
+		SHMSizeGB:            shmSizeGB,
+		SecurityMode:         s.securityModeForInstance(instance.Type),
 		SidecarEnabled:       enableSidecar,
 		SidecarImage:         sidecarImage,
 		InitContainerEnabled: enableInitContainer,
@@ -560,6 +598,16 @@ func (s *instanceService) Start(instanceID int) error {
 	return nil
 }
 
+func (s *instanceService) securityModeForInstance(instanceType string) k8s.PodSecurityMode {
+	if s != nil && s.allowPrivilegedPods {
+		return k8s.PodSecurityPrivileged
+	}
+	if strings.EqualFold(strings.TrimSpace(instanceType), "openclaw") {
+		return k8s.PodSecurityChromiumCompat
+	}
+	return k8s.PodSecurityDefault
+}
+
 func (s *instanceService) ensureGatewayToken(instance *models.Instance) (string, error) {
 	if instance.AccessToken != nil && strings.TrimSpace(*instance.AccessToken) != "" {
 		return strings.TrimSpace(*instance.AccessToken), nil
@@ -584,7 +632,7 @@ func (s *instanceService) buildGatewayEnv(instance *models.Instance) (map[string
 	if instance == nil || instance.AccessToken == nil || strings.TrimSpace(*instance.AccessToken) == "" {
 		return map[string]string{}, nil
 	}
-	if !strings.EqualFold(strings.TrimSpace(instance.Type), "openclaw") {
+	if !supportsManagedRuntimeIntegration(instance.Type) {
 		return map[string]string{}, nil
 	}
 
@@ -630,7 +678,7 @@ func (s *instanceService) ensureAgentBootstrapToken(instance *models.Instance) (
 }
 
 func (s *instanceService) buildAgentEnv(instance *models.Instance) (map[string]string, error) {
-	if instance == nil || !strings.EqualFold(strings.TrimSpace(instance.Type), "openclaw") {
+	if instance == nil || !supportsManagedRuntimeIntegration(instance.Type) {
 		return map[string]string{}, nil
 	}
 	if instance.AgentBootstrapToken == nil || strings.TrimSpace(*instance.AgentBootstrapToken) == "" {
@@ -650,9 +698,40 @@ func (s *instanceService) buildAgentEnv(instance *models.Instance) (map[string]s
 		"CLAWMANAGER_AGENT_BOOTSTRAP_TOKEN":  strings.TrimSpace(*instance.AgentBootstrapToken),
 		"CLAWMANAGER_AGENT_DISK_LIMIT_BYTES": strconv.FormatInt(diskLimitBytes, 10),
 		"CLAWMANAGER_AGENT_INSTANCE_ID":      fmt.Sprintf("%d", instance.ID),
-		"CLAWMANAGER_AGENT_PERSISTENT_DIR":   "/config",
+		"CLAWMANAGER_AGENT_PERSISTENT_DIR":   managedRuntimePersistentDir(instance),
 		"CLAWMANAGER_AGENT_PROTOCOL_VERSION": AgentProtocolVersionV1,
 	}, nil
+}
+
+func supportsManagedRuntimeIntegration(instanceType string) bool {
+	switch strings.ToLower(strings.TrimSpace(instanceType)) {
+	case "openclaw", "hermes":
+		return true
+	default:
+		return false
+	}
+}
+
+func supportsRuntimeConfigInjection(instanceType string) bool {
+	switch strings.ToLower(strings.TrimSpace(instanceType)) {
+	case "openclaw", "hermes":
+		return true
+	default:
+		return false
+	}
+}
+
+func managedRuntimePersistentDir(instance *models.Instance) string {
+	if instance == nil {
+		return "/config"
+	}
+	if strings.EqualFold(instance.Type, "hermes") {
+		return "/config/.hermes"
+	}
+	if strings.TrimSpace(instance.MountPath) != "" {
+		return strings.TrimSpace(instance.MountPath)
+	}
+	return defaultMountPathForInstanceType(instance.Type)
 }
 
 func (s *instanceService) resolveGatewayModelInjection() (*gatewayModelInjection, error) {
@@ -766,40 +845,53 @@ func (s *instanceService) Restart(instanceID int) error {
 	return nil
 }
 
-// Delete deletes an instance and all associated K8s resources
+// Delete starts deleting an instance and all associated K8s resources.
 func (s *instanceService) Delete(instanceID int) error {
-	ctx := context.Background()
-
 	instance, err := s.instanceRepo.GetByID(instanceID)
 	if err != nil {
 		return fmt.Errorf("failed to get instance: %w", err)
 	}
 
 	if instance == nil {
-		// Instance not in DB, but we should still try to clean up K8s resources
-		fmt.Printf("Instance %d not found in database, attempting to clean up any orphaned K8s resources\n", instanceID)
-		// Try to clean up with userID=0 (will need to scan all namespaces)
-		cleanupService := k8s.NewCleanupService()
-		cleanupService.DeleteAllInstanceResources(ctx, 0, instanceID)
 		return fmt.Errorf("instance not found")
 	}
 
-	fmt.Printf("Starting deletion of instance %d (user %d)\n", instanceID, instance.UserID)
+	if instance.Status != "deleting" {
+		now := time.Now()
+		instance.Status = "deleting"
+		instance.UpdatedAt = now
+
+		if err := s.instanceRepo.Update(instance); err != nil {
+			return fmt.Errorf("failed to mark instance as deleting: %w", err)
+		}
+
+		GetHub().BroadcastInstanceStatus(instance.UserID, instance)
+	}
+
+	go s.completeDeletion(instance.UserID, instance.ID)
+
+	return nil
+}
+
+func (s *instanceService) completeDeletion(userID, instanceID int) {
+	ctx := context.Background()
+
+	fmt.Printf("Starting background deletion of instance %d (user %d)\n", instanceID, userID)
 
 	// Use CleanupService to delete ALL resources for this instance (including duplicates)
 	cleanupService := k8s.NewCleanupService()
-	if err := cleanupService.DeleteAllInstanceResources(ctx, instance.UserID, instance.ID); err != nil {
+	if err := cleanupService.DeleteAllInstanceResources(ctx, userID, instanceID); err != nil {
 		fmt.Printf("Warning: error during resource cleanup for instance %d: %v\n", instanceID, err)
 	}
 
-	// 4. Delete instance record from database
+	// Delete instance record from database after background cleanup finishes.
 	fmt.Printf("Deleting instance %d from database...\n", instanceID)
 	if err := s.instanceRepo.Delete(instanceID); err != nil {
-		return fmt.Errorf("failed to delete instance record: %w", err)
+		fmt.Printf("Error: failed to delete instance %d record: %v\n", instanceID, err)
+		return
 	}
 
 	fmt.Printf("Instance %d deleted successfully\n", instanceID)
-	return nil
 }
 
 // cleanupOrphanedResources cleans up any orphaned K8s resources for an instance

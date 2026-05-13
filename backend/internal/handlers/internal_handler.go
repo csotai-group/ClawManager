@@ -84,7 +84,7 @@ func (h *InternalHandler) InternalLogin(c *gin.Context) {
 
 // ListInstances returns all instances enriched with cross-cluster gateway routing info.
 func (h *InternalHandler) ListInstances(c *gin.Context) {
-	instances, total, err := h.instanceService.GetVisibleInstances(0, "admin", 0, 10000)
+	instances, total, err := h.instanceService.GetAllInstances(0, 10000)
 	if err != nil {
 		utils.HandleError(c, err)
 		return
