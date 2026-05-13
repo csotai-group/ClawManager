@@ -1,6 +1,7 @@
 package aigateway
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -132,6 +133,79 @@ func TestBuildProviderRequestUsesAnthropicProtocolForLocalModel(t *testing.T) {
 	}
 	if len(payload.Messages) != 1 || payload.Messages[0].Role != "user" {
 		t.Fatalf("expected anthropic user message, got %#v", payload.Messages)
+	}
+}
+
+func TestBuildProviderHTTPRequestAppliesCustomHeadersWithVariables(t *testing.T) {
+	customHeadersJSON := `[{"key":"X-OpenClaw-Instance","value":"inst-{{instance.id}}"},{"key":"X-Tenant","value":"${env.TENANT_ID}"},{"key":"X-Trace","value":"{{request.trace_id}}"}]`
+	model := &models.LLMModel{
+		ProviderType:      models.ProviderTypeOpenAICompatible,
+		BaseURL:           "https://provider.example/v1",
+		ProviderModelName: "provider-model",
+		CustomHeadersJSON: &customHeadersJSON,
+	}
+
+	httpRequest, err := buildProviderHTTPRequest(
+		context.Background(),
+		"trc_123",
+		"req_123",
+		model,
+		[]byte(`{"model":"provider-model"}`),
+		nil,
+		false,
+		map[string]string{
+			"instance.id":      "42",
+			"env.tenant_id":    "tenant-a",
+			"request.trace_id": "trc_123",
+		},
+	)
+	if err != nil {
+		t.Fatalf("buildProviderHTTPRequest returned error: %v", err)
+	}
+
+	if got := httpRequest.Header.Get("X-OpenClaw-Instance"); got != "inst-42" {
+		t.Fatalf("expected rendered instance header, got %q", got)
+	}
+	if got := httpRequest.Header.Get("X-Tenant"); got != "tenant-a" {
+		t.Fatalf("expected rendered env header, got %q", got)
+	}
+	if got := httpRequest.Header.Get("X-Trace"); got != "trc_123" {
+		t.Fatalf("expected rendered trace header, got %q", got)
+	}
+}
+
+func TestCustomHeaderVariablesIncludeInstanceMetadataAndEnv(t *testing.T) {
+	environmentOverridesJSON := `{"TENANT_ID":"tenant-a"}`
+	prepared := &preparedChatRequest{
+		traceID:   "trc_123",
+		requestID: "req_123",
+		sessionID: "sess_123",
+		userID:    7,
+		req: ChatCompletionRequest{
+			Model:      "gateway-model",
+			InstanceID: intPtr(42),
+		},
+		resolvedModel: &models.LLMModel{
+			ID:                3,
+			DisplayName:       "Gateway GPT",
+			ProviderModelName: "provider-gpt",
+		},
+		instance: &models.Instance{
+			ID:                       42,
+			UserID:                   7,
+			Name:                     "openclaw-main",
+			Type:                     "openclaw",
+			Status:                   "running",
+			EnvironmentOverridesJSON: &environmentOverridesJSON,
+		},
+	}
+
+	rendered := renderCustomHeaderValue(
+		"{{instance.name}}/{{instance.id}}/{{env.TENANT_ID}}/{{model.provider_model_name}}/{{request.request_id}}",
+		prepared.customHeaderVariables(),
+	)
+	if rendered != "openclaw-main/42/tenant-a/provider-gpt/req_123" {
+		t.Fatalf("expected variables to render from prepared request, got %q", rendered)
 	}
 }
 
