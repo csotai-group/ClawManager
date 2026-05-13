@@ -1,5 +1,10 @@
 import api from './api';
 
+export interface LLMModelCustomHeader {
+  key: string;
+  value: string;
+}
+
 export interface LLMModel {
   id?: number;
   display_name: string;
@@ -15,6 +20,7 @@ export interface LLMModel {
   input_price: number;
   output_price: number;
   currency: string;
+  custom_headers?: LLMModelCustomHeader[];
   created_at?: string;
   updated_at?: string;
 }

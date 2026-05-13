@@ -133,6 +133,7 @@ type preparedChatRequest struct {
 	selectedModel *models.LLMModel
 	resolvedModel *models.LLMModel
 	req           ChatCompletionRequest
+	templateVars  map[string]string
 }
 
 type openAIStreamChunk struct {
@@ -277,6 +278,7 @@ type Service interface {
 
 type service struct {
 	modelRepo          repository.LLMModelRepository
+	instanceRepo       repository.InstanceRepository
 	invocationService  services.ModelInvocationService
 	auditEventService  services.AuditEventService
 	costRecordService  services.CostRecordService
@@ -291,6 +293,7 @@ type service struct {
 // NewService creates a new AI gateway service.
 func NewService(
 	modelRepo repository.LLMModelRepository,
+	instanceRepo repository.InstanceRepository,
 	invocationService services.ModelInvocationService,
 	auditEventService services.AuditEventService,
 	costRecordService services.CostRecordService,
@@ -301,6 +304,7 @@ func NewService(
 ) Service {
 	return &service{
 		modelRepo:          modelRepo,
+		instanceRepo:       instanceRepo,
 		invocationService:  invocationService,
 		auditEventService:  auditEventService,
 		costRecordService:  costRecordService,
@@ -519,7 +523,20 @@ func (s *service) prepareChatRequest(userID int, req ChatCompletionRequest) (*pr
 	}
 
 	prepared.resolvedModel = resolvedModel
+	prepared.templateVars = s.loadInstanceTemplateVars(prepared.req.InstanceID)
 	return prepared, nil
+}
+
+func (s *service) loadInstanceTemplateVars(instanceID *int) map[string]string {
+	if instanceID == nil || *instanceID <= 0 || s.instanceRepo == nil {
+		return map[string]string{}
+	}
+	instance, err := s.instanceRepo.GetByID(*instanceID)
+	if err != nil {
+		log.Printf("failed to load instance %d for header template vars: %v", *instanceID, err)
+		return map[string]string{}
+	}
+	return buildInstanceTemplateVars(instance)
 }
 
 func (s *service) callOpenAICompatible(ctx context.Context, prepared *preparedChatRequest) (*ProxyResponse, string, error) {
@@ -533,7 +550,7 @@ func (s *service) callOpenAICompatible(ctx context.Context, prepared *preparedCh
 		return nil, prepared.traceID, err
 	}
 
-	httpRequest, err := buildProviderHTTPRequest(ctx, prepared.traceID, prepared.requestID, prepared.resolvedModel, providerRequestBody, resolvedAPIKey, false)
+	httpRequest, err := buildProviderHTTPRequest(ctx, prepared.traceID, prepared.requestID, prepared.resolvedModel, providerRequestBody, resolvedAPIKey, false, prepared.templateVars)
 	if err != nil {
 		return nil, prepared.traceID, err
 	}
@@ -589,7 +606,7 @@ func (s *service) callAnthropic(ctx context.Context, prepared *preparedChatReque
 		return nil, prepared.traceID, err
 	}
 
-	httpRequest, err := buildProviderHTTPRequest(ctx, prepared.traceID, prepared.requestID, prepared.resolvedModel, providerRequestBody, resolvedAPIKey, false)
+	httpRequest, err := buildProviderHTTPRequest(ctx, prepared.traceID, prepared.requestID, prepared.resolvedModel, providerRequestBody, resolvedAPIKey, false, prepared.templateVars)
 	if err != nil {
 		return nil, prepared.traceID, err
 	}
@@ -809,7 +826,7 @@ func (s *service) streamOpenAICompatible(ctx context.Context, prepared *prepared
 		return err
 	}
 
-	httpRequest, err := buildProviderHTTPRequest(ctx, prepared.traceID, prepared.requestID, prepared.resolvedModel, providerRequestBody, resolvedAPIKey, true)
+	httpRequest, err := buildProviderHTTPRequest(ctx, prepared.traceID, prepared.requestID, prepared.resolvedModel, providerRequestBody, resolvedAPIKey, true, prepared.templateVars)
 	if err != nil {
 		return err
 	}
@@ -898,7 +915,7 @@ func (s *service) streamAnthropic(ctx context.Context, prepared *preparedChatReq
 		return err
 	}
 
-	httpRequest, err := buildProviderHTTPRequest(ctx, prepared.traceID, prepared.requestID, prepared.resolvedModel, providerRequestBody, resolvedAPIKey, true)
+	httpRequest, err := buildProviderHTTPRequest(ctx, prepared.traceID, prepared.requestID, prepared.resolvedModel, providerRequestBody, resolvedAPIKey, true, prepared.templateVars)
 	if err != nil {
 		return err
 	}
@@ -1371,16 +1388,46 @@ func buildAnthropicRequestBody(req ChatCompletionRequest, model *models.LLMModel
 	return body, nil
 }
 
-func buildProviderHTTPRequest(ctx context.Context, traceID, requestID string, model *models.LLMModel, providerRequestBody []byte, resolvedAPIKey *string, acceptStream bool) (*http.Request, error) {
+func buildProviderHTTPRequest(ctx context.Context, traceID, requestID string, model *models.LLMModel, providerRequestBody []byte, resolvedAPIKey *string, acceptStream bool, templateVars map[string]string) (*http.Request, error) {
 	if model == nil {
 		return nil, errors.New("model is not active or does not exist")
 	}
 
+	var httpRequest *http.Request
+	var err error
 	switch models.ResolveLLMProtocolTypeOrDefault(model.ProviderType, model.ProtocolType) {
 	case models.ProtocolTypeAnthropic:
-		return buildAnthropicProviderHTTPRequest(ctx, traceID, requestID, model, providerRequestBody, resolvedAPIKey, acceptStream)
+		httpRequest, err = buildAnthropicProviderHTTPRequest(ctx, traceID, requestID, model, providerRequestBody, resolvedAPIKey, acceptStream)
 	default:
-		return buildOpenAICompatibleProviderHTTPRequest(ctx, traceID, requestID, model, providerRequestBody, resolvedAPIKey, acceptStream)
+		httpRequest, err = buildOpenAICompatibleProviderHTTPRequest(ctx, traceID, requestID, model, providerRequestBody, resolvedAPIKey, acceptStream)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	applyCustomHeaders(httpRequest, model.CustomHeaders, templateVars)
+	return httpRequest, nil
+}
+
+// applyCustomHeaders adds admin-configured custom HTTP headers to the outbound provider
+// request. Values may reference `{{VAR}}` placeholders bound to the active OpenClaw instance.
+// Headers with an empty key or empty resolved value are skipped. Custom headers always win
+// over the protocol-default headers set above.
+func applyCustomHeaders(req *http.Request, headers []models.LLMModelCustomHeader, templateVars map[string]string) {
+	if req == nil || len(headers) == 0 {
+		return
+	}
+	for _, header := range headers {
+		key := strings.TrimSpace(header.Key)
+		if key == "" {
+			continue
+		}
+		value := resolveTemplateString(header.Value, templateVars)
+		if value == "" {
+			req.Header.Del(key)
+			continue
+		}
+		req.Header.Set(key, value)
 	}
 }
 

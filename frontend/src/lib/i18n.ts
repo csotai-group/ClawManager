@@ -1408,6 +1408,13 @@ export const translations: Record<Locale, TranslationTree> = {
         "Only active models can be exposed to future user-facing model pickers and routing policies.",
       howItWorksDiscovery:
         "Built-in vendor templates cover common OpenAI-compatible providers and local endpoints, and provider models can still be entered manually when discovery is unavailable.",
+      customHeaders: "Custom Headers",
+      customHeadersHelp:
+        "Custom HTTP headers are attached to every provider request. Values can reference instance variables like {{INSTANCE_ID}}, {{INSTANCE_NAME}}, {{INSTANCE_USER_ID}}, {{INSTANCE_ACCESS_TOKEN}}, {{INSTANCE_POD_NAME}}, {{INSTANCE_POD_NAMESPACE}}, {{INSTANCE_POD_IP}}, {{INSTANCE_ACCESS_URL}} — they are resolved against the active OpenClaw instance at request time.",
+      customHeadersEmpty: "No custom headers configured.",
+      addHeader: "Add Header",
+      headerKeyPlaceholder: "Header name, e.g. X-Instance-Id",
+      headerValuePlaceholder: "Supports variables, e.g. {{INSTANCE_NAME}}",
     },
     riskRulesPage: {
       title: "Configurable Sensitive Detection Rules",
@@ -2580,6 +2587,13 @@ export const translations: Record<Locale, TranslationTree> = {
       howItWorksActive: "只有启用状态的模型才会暴露给用户侧选择器和路由策略。",
       howItWorksDiscovery:
         "内置厂家模板覆盖常见 OpenAI-compatible 厂家和本地端点；即使自动发现不可用，也仍可手动填写 Provider Model。",
+      customHeaders: "自定义 Header",
+      customHeadersHelp:
+        "自定义 HTTP Header 会附加到每次发往该模型的请求中。Value 支持变量占位符，如 {{INSTANCE_ID}}、{{INSTANCE_NAME}}、{{INSTANCE_USER_ID}}、{{INSTANCE_ACCESS_TOKEN}}、{{INSTANCE_POD_NAME}}、{{INSTANCE_POD_NAMESPACE}}、{{INSTANCE_POD_IP}}、{{INSTANCE_ACCESS_URL}}，请求时会根据当前 OpenClaw 实例自动替换。",
+      customHeadersEmpty: "暂未配置自定义 Header。",
+      addHeader: "添加 Header",
+      headerKeyPlaceholder: "Header 名称，例如 X-Instance-Id",
+      headerValuePlaceholder: "支持变量，例如 {{INSTANCE_NAME}}",
     },
     riskRulesPage: {
       title: "可配置敏感检测规则",
@@ -3724,6 +3738,13 @@ export const translations: Record<Locale, TranslationTree> = {
         "有効化されたモデルだけが将来のユーザー向け選択肢やルーティングに公開されます。",
       howItWorksDiscovery:
         "組み込みのベンダーテンプレートは主要な OpenAI-compatible Provider とローカル endpoint をカバーし、自動取得できない場合でも Provider Model を手入力できます。",
+      customHeaders: "カスタムヘッダー",
+      customHeadersHelp:
+        "カスタム HTTP ヘッダーは Provider への各リクエストに付与されます。値には {{INSTANCE_ID}}、{{INSTANCE_NAME}}、{{INSTANCE_USER_ID}}、{{INSTANCE_ACCESS_TOKEN}}、{{INSTANCE_POD_NAME}}、{{INSTANCE_POD_NAMESPACE}}、{{INSTANCE_POD_IP}}、{{INSTANCE_ACCESS_URL}} などの変数を使用でき、リクエスト時に現在の OpenClaw インスタンスに基づいて置換されます。",
+      customHeadersEmpty: "カスタムヘッダーは未設定です。",
+      addHeader: "ヘッダーを追加",
+      headerKeyPlaceholder: "ヘッダー名 (例: X-Instance-Id)",
+      headerValuePlaceholder: "変数をサポート (例: {{INSTANCE_NAME}})",
     },
     riskRulesPage: {
       title: "設定可能な機密検知ルール",
@@ -4920,6 +4941,13 @@ export const translations: Record<Locale, TranslationTree> = {
         "활성화된 모델만 향후 사용자 선택기와 라우팅 정책에 노출됩니다.",
       howItWorksDiscovery:
         "기본 제공 벤더 템플릿은 주요 OpenAI-compatible Provider와 로컬 endpoint를 포함하며, 자동 검색이 안 되더라도 Provider Model을 수동으로 입력할 수 있습니다.",
+      customHeaders: "사용자 정의 헤더",
+      customHeadersHelp:
+        "사용자 정의 HTTP 헤더는 Provider에 대한 모든 요청에 추가됩니다. 값에 {{INSTANCE_ID}}, {{INSTANCE_NAME}}, {{INSTANCE_USER_ID}}, {{INSTANCE_ACCESS_TOKEN}}, {{INSTANCE_POD_NAME}}, {{INSTANCE_POD_NAMESPACE}}, {{INSTANCE_POD_IP}}, {{INSTANCE_ACCESS_URL}} 같은 변수를 사용할 수 있으며 요청 시 현재 OpenClaw 인스턴스 기준으로 치환됩니다.",
+      customHeadersEmpty: "구성된 사용자 정의 헤더가 없습니다.",
+      addHeader: "헤더 추가",
+      headerKeyPlaceholder: "헤더 이름 (예: X-Instance-Id)",
+      headerValuePlaceholder: "변수 지원 (예: {{INSTANCE_NAME}})",
     },
     riskRulesPage: {
       title: "구성 가능한 민감 감지 규칙",
@@ -6113,6 +6141,13 @@ export const translations: Record<Locale, TranslationTree> = {
         "Nur aktive Modelle können später in Benutzerauswahl und Routing-Regeln auftauchen.",
       howItWorksDiscovery:
         "Integrierte Vendor-Vorlagen decken gängige OpenAI-compatible Provider und lokale Endpunkte ab. Wenn die automatische Erkennung nicht verfügbar ist, kann das Provider-Modell weiterhin manuell eingetragen werden.",
+      customHeaders: "Benutzerdefinierte Header",
+      customHeadersHelp:
+        "Benutzerdefinierte HTTP-Header werden an jede Provider-Anfrage angehängt. Werte können Variablen wie {{INSTANCE_ID}}, {{INSTANCE_NAME}}, {{INSTANCE_USER_ID}}, {{INSTANCE_ACCESS_TOKEN}}, {{INSTANCE_POD_NAME}}, {{INSTANCE_POD_NAMESPACE}}, {{INSTANCE_POD_IP}}, {{INSTANCE_ACCESS_URL}} verwenden – sie werden zur Anfragezeit anhand der aktiven OpenClaw-Instanz aufgelöst.",
+      customHeadersEmpty: "Keine benutzerdefinierten Header konfiguriert.",
+      addHeader: "Header hinzufügen",
+      headerKeyPlaceholder: "Header-Name, z. B. X-Instance-Id",
+      headerValuePlaceholder: "Unterstützt Variablen, z. B. {{INSTANCE_NAME}}",
     },
     riskRulesPage: {
       title: "Konfigurierbare Regeln zur Sensitivitätserkennung",

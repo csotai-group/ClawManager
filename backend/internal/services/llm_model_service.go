@@ -41,6 +41,7 @@ type SaveLLMModelRequest struct {
 	InputPrice        float64
 	OutputPrice       float64
 	Currency          string
+	CustomHeaders     []models.LLMModelCustomHeader
 }
 
 // DiscoverLLMModelsRequest contains fields needed to query a provider for available models.
@@ -174,6 +175,11 @@ func (s *llmModelService) SaveModel(req SaveLLMModelRequest) (*models.LLMModel, 
 		}
 	}
 
+	normalizedHeaders, headersJSON, err := normalizeCustomHeaders(req.CustomHeaders)
+	if err != nil {
+		return nil, err
+	}
+
 	model := &models.LLMModel{
 		ID:                req.ID,
 		DisplayName:       displayName,
@@ -189,6 +195,8 @@ func (s *llmModelService) SaveModel(req SaveLLMModelRequest) (*models.LLMModel, 
 		InputPrice:        req.InputPrice,
 		OutputPrice:       req.OutputPrice,
 		Currency:          currency,
+		CustomHeadersJSON: headersJSON,
+		CustomHeaders:     normalizedHeaders,
 	}
 
 	if current != nil {
@@ -415,6 +423,46 @@ func (s *llmModelService) doJSON(request *http.Request, target any) error {
 		return fmt.Errorf("failed to decode provider discovery response: %w", err)
 	}
 	return nil
+}
+
+var customHeaderNamePattern = regexp.MustCompile(`^[A-Za-z0-9!#$%&'*+\-.^_` + "`" + `|~]+$`)
+
+func normalizeCustomHeaders(entries []models.LLMModelCustomHeader) ([]models.LLMModelCustomHeader, *string, error) {
+	if len(entries) == 0 {
+		return nil, nil, nil
+	}
+
+	normalized := make([]models.LLMModelCustomHeader, 0, len(entries))
+	seen := make(map[string]struct{}, len(entries))
+	for _, entry := range entries {
+		key := strings.TrimSpace(entry.Key)
+		if key == "" {
+			continue
+		}
+		if !customHeaderNamePattern.MatchString(key) {
+			return nil, nil, fmt.Errorf("invalid header name: %s", key)
+		}
+		canonical := strings.ToLower(key)
+		if _, exists := seen[canonical]; exists {
+			return nil, nil, fmt.Errorf("duplicate header name: %s", key)
+		}
+		seen[canonical] = struct{}{}
+		normalized = append(normalized, models.LLMModelCustomHeader{
+			Key:   key,
+			Value: entry.Value,
+		})
+	}
+
+	if len(normalized) == 0 {
+		return nil, nil, nil
+	}
+
+	raw, err := json.Marshal(normalized)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to encode custom headers: %w", err)
+	}
+	encoded := string(raw)
+	return normalized, &encoded, nil
 }
 
 func buildProviderEndpoint(baseURL, versionPrefix, resource string) (string, error) {

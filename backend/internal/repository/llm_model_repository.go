@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -87,12 +88,45 @@ WHERE protocol_type IS NULL OR TRIM(protocol_type) = '';
 	if _, err := r.sess.SQL().Exec(backfillProtocolTypeQuery); err != nil {
 		panic(fmt.Errorf("failed to ensure llm_models protocol_type column: %w", err))
 	}
+
+	const alterCustomHeadersQuery = `
+ALTER TABLE llm_models
+  ADD COLUMN custom_headers_json TEXT NULL AFTER currency;
+`
+
+	if _, err := r.sess.SQL().Exec(alterCustomHeadersQuery); err != nil {
+		if !strings.Contains(strings.ToLower(err.Error()), "duplicate column name") {
+			panic(fmt.Errorf("failed to ensure llm_models custom_headers_json column: %w", err))
+		}
+	}
+}
+
+func hydrateCustomHeaders(model *models.LLMModel) {
+	if model == nil {
+		return
+	}
+	model.CustomHeaders = nil
+	if model.CustomHeadersJSON == nil {
+		return
+	}
+	raw := strings.TrimSpace(*model.CustomHeadersJSON)
+	if raw == "" {
+		return
+	}
+	var headers []models.LLMModelCustomHeader
+	if err := json.Unmarshal([]byte(raw), &headers); err != nil {
+		return
+	}
+	model.CustomHeaders = headers
 }
 
 func (r *llmModelRepository) List() ([]models.LLMModel, error) {
 	var items []models.LLMModel
 	if err := r.sess.Collection("llm_models").Find().OrderBy("-is_secure", "display_name").All(&items); err != nil {
 		return nil, fmt.Errorf("failed to list llm models: %w", err)
+	}
+	for i := range items {
+		hydrateCustomHeaders(&items[i])
 	}
 	return items, nil
 }
@@ -101,6 +135,9 @@ func (r *llmModelRepository) ListActive() ([]models.LLMModel, error) {
 	var items []models.LLMModel
 	if err := r.sess.Collection("llm_models").Find(db.Cond{"is_active": true}).OrderBy("-is_secure", "display_name").All(&items); err != nil {
 		return nil, fmt.Errorf("failed to list active llm models: %w", err)
+	}
+	for i := range items {
+		hydrateCustomHeaders(&items[i])
 	}
 	return items, nil
 }
@@ -114,6 +151,7 @@ func (r *llmModelRepository) GetByID(id int) (*models.LLMModel, error) {
 		}
 		return nil, fmt.Errorf("failed to get llm model by id: %w", err)
 	}
+	hydrateCustomHeaders(&item)
 	return &item, nil
 }
 
@@ -126,6 +164,7 @@ func (r *llmModelRepository) GetByDisplayName(displayName string) (*models.LLMMo
 		}
 		return nil, fmt.Errorf("failed to get llm model by display name: %w", err)
 	}
+	hydrateCustomHeaders(&item)
 	return &item, nil
 }
 
